@@ -1,0 +1,26 @@
+# FastAPI and ASGI server
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+
+# OCR Engine
+paddlepaddle==2.6.2
+paddleocr==2.9.1
+
+# Image processing
+opencv-python-headless==4.10.0.84
+Pillow==11.0.0
+numpy==1.26.4
+
+# Data validation
+pydantic==2.10.3
+pydantic-settings==2.7.0
+
+# HTTP utilities
+python-multipart==0.0.18
+requests==2.32.3
+
+# Additional utilities
+python-dateutil==2.9.0
+
+# Google Generative AI (Gemini Vision) - Updated for 1.5 models
+google-generativeai>=0.8.3
