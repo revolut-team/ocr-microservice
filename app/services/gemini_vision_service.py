@@ -41,6 +41,17 @@ class GeminiVisionService:
             image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             pil_image = Image.fromarray(image_rgb)
 
+            # First validate that this is a Venezuelan cedula
+            logger.info("Validating that image is a Venezuelan cedula...")
+            validation_prompt = self._get_cedula_validation_prompt()
+            validation_response = self.model.generate_content([validation_prompt, pil_image])
+
+            logger.info(f"Cedula validation raw response: {validation_response.text}")
+
+            if not self._is_valid_cedula(validation_response.text):
+                logger.warning(f"Image validation failed: Not a Venezuelan cedula. Response: {validation_response.text}")
+                raise ValueError("La imagen no corresponde a una cédula de identidad venezolana válida. Por favor, cargue una imagen de su cédula.")
+
             # Craft prompt for Gemini
             prompt = self._get_cedula_prompt()
 
@@ -80,6 +91,17 @@ class GeminiVisionService:
             import cv2
             image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             pil_image = Image.fromarray(image_rgb)
+
+            # First validate that this is a Venezuelan carnet de circulación
+            logger.info("Validating that image is a Venezuelan carnet de circulación...")
+            validation_prompt = self._get_carnet_validation_prompt()
+            validation_response = self.model.generate_content([validation_prompt, pil_image])
+
+            logger.info(f"Carnet validation raw response: {validation_response.text}")
+
+            if not self._is_valid_carnet(validation_response.text):
+                logger.warning(f"Image validation failed: Not a Venezuelan carnet. Response: {validation_response.text}")
+                raise ValueError("La imagen no corresponde a un certificado de circulación venezolano válido. Por favor, cargue una imagen de su carnet de circulación.")
 
             # Craft prompt for Gemini
             prompt = self._get_carnet_prompt()
@@ -204,6 +226,112 @@ NOTAS IMPORTANTES:
 - El año puede estar en formato "2025/2025" o "2025", devuelve solo "2025"
 
 Responde ÚNICAMENTE con el JSON, sin explicaciones."""
+
+    def _get_cedula_validation_prompt(self) -> str:
+        """
+        Get prompt to validate if image is a Venezuelan cedula
+
+        Returns:
+            Validation prompt string
+        """
+        return """Tu única tarea es determinar si esta imagen es una CÉDULA DE IDENTIDAD VENEZOLANA oficial.
+
+Una cédula venezolana VÁLIDA debe tener TODOS estos elementos:
+- Encabezado "REPÚBLICA BOLIVARIANA DE VENEZUELA" o "CÉDULA DE IDENTIDAD"
+- Un número de cédula con prefijo V, E, J, G, o P
+- Campos claramente visibles: APELLIDOS, NOMBRES, FECHA DE NACIMIENTO
+- Logo o escudo de Venezuela
+- Puede ser verde (nueva) o laminada (antigua)
+
+IMPORTANTE:
+- Si es una cédula venezolana → responde EXACTAMENTE: SI
+- Si NO es una cédula venezolana (foto de persona, pasaporte, carnet de circulación, cualquier otro documento, imagen random, etc.) → responde EXACTAMENTE: NO - [describe qué es la imagen]
+
+RESPONDE ÚNICAMENTE LA PALABRA:
+SI
+o
+NO - [descripción breve]"""
+
+    def _get_carnet_validation_prompt(self) -> str:
+        """
+        Get prompt to validate if image is a Venezuelan carnet de circulación
+
+        Returns:
+            Validation prompt string
+        """
+        return """Tu única tarea es determinar si esta imagen es un CERTIFICADO DE CIRCULACIÓN venezolano oficial del INTT.
+
+Un certificado de circulación venezolano VÁLIDO debe tener TODOS estos elementos:
+- Encabezado "INSTITUTO NACIONAL DE TRANSPORTE TERRESTRE" o logo "INTT"
+- La palabra "CERTIFICADO" o "CIRCULACIÓN"
+- Campos del vehículo: PLACA, MARCA, MODELO, AÑO, COLOR, SERIAL (N.I.V.)
+- Información del propietario con cédula
+- Puede ser digital (con código QR) o impreso
+
+IMPORTANTE:
+- Si es un certificado de circulación venezolano → responde EXACTAMENTE: SI
+- Si NO es un certificado de circulación (cédula, licencia de conducir, foto, cualquier otro documento, imagen random, etc.) → responde EXACTAMENTE: NO - [describe qué es la imagen]
+
+RESPONDE ÚNICAMENTE LA PALABRA:
+SI
+o
+NO - [descripción breve]"""
+
+    def _is_valid_cedula(self, validation_response: str) -> bool:
+        """
+        Check if validation response indicates a valid Venezuelan cedula
+
+        Args:
+            validation_response: Response from validation prompt
+
+        Returns:
+            True if valid cedula, False otherwise
+        """
+        response_upper = validation_response.strip().upper()
+        logger.info(f"Cedula validation response (uppercase): {response_upper}")
+
+        # Explicitly reject if response contains NO
+        if response_upper.startswith("NO"):
+            logger.info("Validation rejected: Response starts with NO")
+            return False
+
+        # Only accept if response CLEARLY indicates it's a valid Venezuelan cedula
+        # Must start with SI or SÍ
+        if response_upper.startswith("SI") or response_upper.startswith("SÍ"):
+            logger.info("Validation accepted: Response starts with SI/SÍ")
+            return True
+
+        # If response doesn't start with SI/SÍ, reject it
+        logger.info(f"Validation rejected: Response doesn't start with SI/SÍ. Response: {response_upper}")
+        return False
+
+    def _is_valid_carnet(self, validation_response: str) -> bool:
+        """
+        Check if validation response indicates a valid Venezuelan carnet
+
+        Args:
+            validation_response: Response from validation prompt
+
+        Returns:
+            True if valid carnet, False otherwise
+        """
+        response_upper = validation_response.strip().upper()
+        logger.info(f"Carnet validation response (uppercase): {response_upper}")
+
+        # Explicitly reject if response contains NO
+        if response_upper.startswith("NO"):
+            logger.info("Validation rejected: Response starts with NO")
+            return False
+
+        # Only accept if response CLEARLY indicates it's a valid Venezuelan carnet
+        # Must start with SI or SÍ
+        if response_upper.startswith("SI") or response_upper.startswith("SÍ"):
+            logger.info("Validation accepted: Response starts with SI/SÍ")
+            return True
+
+        # If response doesn't start with SI/SÍ, reject it
+        logger.info(f"Validation rejected: Response doesn't start with SI/SÍ. Response: {response_upper}")
+        return False
 
     def _convert_date_format(self, date_str: Optional[str]) -> Optional[str]:
         """
