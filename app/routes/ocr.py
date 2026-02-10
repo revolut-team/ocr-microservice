@@ -167,6 +167,9 @@ async def process_carnet_vision(request: OCRBase64Request):
                 "owner_cedula": carnet_data.get("cedula_propietario"),
                 "vehicle_use": carnet_data.get("uso"),
                 "vehicle_type": carnet_data.get("tipo"),
+                "vehicle_peso": carnet_data.get("peso"),
+                "vehicle_ejes": carnet_data.get("numero_ejes"),
+                "vehicle_puestos": carnet_data.get("cantidad_puestos"),
                 "confidence": carnet_data.get("confidence"),
                 "raw_text": result.get("raw_response", "")
             },

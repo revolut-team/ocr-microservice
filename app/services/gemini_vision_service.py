@@ -199,6 +199,9 @@ Campos a extraer:
 8. **cedula_propietario**: Cédula del propietario con letra (ejemplo: "V24757906")
 9. **uso**: Uso del vehículo (ejemplo: "MOTO PARTICULAR", "PARTICULAR", "PUBLICO")
 10. **tipo**: Tipo de vehículo (ejemplo: "MOTOCICLETA", "AUTOMOVIL", "CAMIONETA")
+11. **peso**: Peso del vehículo con unidad (ejemplo: "150 KGS", "1200 KGS"). Puede aparecer como "TARA", "PESO BRUTO" o "PESO". Si no aparece, usa null.
+12. **numero_ejes**: Número de ejes con descripción (ejemplo: "2 EJES", "3 EJES"). Si no aparece, usa null.
+13. **cantidad_puestos**: Cantidad de puestos o asientos con unidad (ejemplo: "2 PTOS.", "5 PTOS.", "2 PERSONAS"). Si no aparece, usa null.
 
 FORMATO DE RESPUESTA (JSON):
 ```json
@@ -212,7 +215,10 @@ FORMATO DE RESPUESTA (JSON):
   "propietario": "LUIGY ANTONI HERNANDEZ RIVERO",
   "cedula_propietario": "V24757906",
   "uso": "MOTO PARTICULAR",
-  "tipo": "MOTOCICLETA"
+  "tipo": "MOTOCICLETA",
+  "peso": "150 KGS",
+  "numero_ejes": "2 EJES",
+  "cantidad_puestos": "2 PTOS."
 }
 ```
 
@@ -484,6 +490,9 @@ NO - [descripción breve]"""
                 "cedula_propietario": data.get("cedula_propietario"),
                 "uso": data.get("uso"),
                 "tipo": data.get("tipo"),
+                "peso": data.get("peso"),
+                "numero_ejes": data.get("numero_ejes"),
+                "cantidad_puestos": data.get("cantidad_puestos"),
             }
 
             # Calculate confidence (Gemini doesn't provide per-field confidence, so we estimate)
@@ -505,7 +514,7 @@ NO - [descripción breve]"""
                 "campos_core_totales": len(core_fields)
             }
 
-            logger.info(f"Parsed carnet data: {validated_data.get('placa')} - {validated_data.get('marca')} {validated_data.get('modelo')}")
+            logger.info(f"Parsed carnet data: {validated_data.get('placa')} - {validated_data.get('marca')} {validated_data.get('modelo')} | tipo={validated_data.get('tipo')}, peso={validated_data.get('peso')}, ejes={validated_data.get('numero_ejes')}, puestos={validated_data.get('cantidad_puestos')}")
 
             return validated_data
 
