@@ -352,6 +352,123 @@ try {
 }
 ```
 
+## Production Deployment
+
+### Git Repository
+
+This OCR microservice is a separate Git repository:
+- **Repository:** `revolut-team/ocr-microservice`
+- **Production Path:** `/opt/seguramiga/ocr-microservice/`
+- **Git Authentication:** Personal Access Token (configured in production)
+
+### Deployment Workflow
+
+**Local Development:**
+```bash
+# Make changes to OCR code
+git add .
+git commit -m "descripción cambios"
+git push origin main
+```
+
+**Production Deployment:**
+
+**Option 1: Automated (Recommended)**
+```bash
+ssh root@65.181.118.215
+cd /opt/seguramiga
+./deploy.sh  # Pulls all repos including OCR and restarts
+```
+
+**Option 2: Manual OCR-only deployment**
+```bash
+ssh root@65.181.118.215
+
+# Pull latest changes
+cd /opt/seguramiga/ocr-microservice
+git pull
+
+# Rebuild Docker image (REQUIRED for code changes)
+cd /opt/seguramiga
+docker-compose -f docker-compose.prod.yml build --no-cache seguramiga_ocr
+
+# Restart OCR service
+docker-compose -f docker-compose.prod.yml restart seguramiga_ocr
+
+# Verify
+docker-compose -f docker-compose.prod.yml ps
+docker logs seguramiga_ocr
+```
+
+### When to Rebuild
+
+**ALWAYS rebuild the OCR container when:**
+- ✅ Any `.py` file is modified (code is inside image)
+- ✅ `requirements.txt` changes (new dependencies)
+- ✅ `Dockerfile` changes
+- ✅ Configuration in `app/config.py` changes
+
+**No rebuild needed when:**
+- ❌ Only `.env` file changes (mounted externally)
+
+### Production Environment
+
+**Server:** `65.181.118.215`
+
+**Production `.env` location:** `/opt/seguramiga/ocr-microservice/.env`
+
+**Required environment variables:**
+```bash
+GEMINI_API_KEY=AIzaSyAfHxDKuEOPhxCscQx-Mc4PWPbVauSI-qQ  # Real key in production
+GEMINI_MODEL=gemini-1.5-flash
+OCR_LANG=es
+OCR_USE_GPU=false
+OCR_MIN_CONFIDENCE=0.7
+MAX_IMAGE_SIZE_MB=10
+PORT=8080
+WORKERS=2
+LOG_LEVEL=info
+CORS_ORIGINS=*
+```
+
+**Access:**
+- External: `http://65.181.118.215:8080`
+- Health check: `http://65.181.118.215:8080/api/v1/health`
+- Docs: `http://65.181.118.215:8080/docs`
+
+### Production Troubleshooting
+
+**Check container status:**
+```bash
+ssh root@65.181.118.215
+docker-compose -f /opt/seguramiga/docker-compose.prod.yml ps
+```
+
+**View logs:**
+```bash
+docker logs -f seguramiga_ocr
+```
+
+**Restart service:**
+```bash
+cd /opt/seguramiga
+docker-compose -f docker-compose.prod.yml restart seguramiga_ocr
+```
+
+**Rebuild after code changes:**
+```bash
+cd /opt/seguramiga/ocr-microservice
+git pull
+cd /opt/seguramiga
+docker-compose -f docker-compose.prod.yml build --no-cache seguramiga_ocr
+docker-compose -f docker-compose.prod.yml up -d seguramiga_ocr
+```
+
+**Check Gemini API key:**
+```bash
+docker exec seguramiga_ocr env | grep GEMINI_API_KEY
+```
+
 ## Performance Metrics
 
 **Average Processing Time:**
