@@ -440,7 +440,7 @@ NO - [descripción breve]"""
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse JSON from response: {str(e)}")
             logger.error(f"Raw response: {response_text}")
-            raise ValueError(f"Invalid JSON in Gemini response: {str(e)}")
+            raise ValueError(f"Error al procesar el documento: formato de respuesta inválido")
         except Exception as e:
             logger.error(f"Failed to parse cedula response: {str(e)}")
             raise
@@ -521,7 +521,7 @@ NO - [descripción breve]"""
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse JSON from carnet response: {str(e)}")
             logger.error(f"Raw response: {response_text}")
-            raise ValueError(f"Invalid JSON in Gemini response: {str(e)}")
+            raise ValueError(f"Error al procesar el documento: formato de respuesta inválido")
         except Exception as e:
             logger.error(f"Failed to parse carnet response: {str(e)}")
             raise

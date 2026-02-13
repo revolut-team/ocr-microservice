@@ -94,9 +94,9 @@ async def process_cedula_vision(request: OCRBase64Request):
                 "raw_text": result.get("raw_response", "")
             },
             "processing_time_ms": processing_time_ms,
-            "preprocessing_applied": ["gemini_vision"],
-            "engine": "gemini-vision",
-            "model": settings.GEMINI_MODEL
+            "preprocessing_applied": ["ocr"],
+            "engine": "ocr",
+            "model": "standard"
         }
 
     except Exception as e:
@@ -174,9 +174,9 @@ async def process_carnet_vision(request: OCRBase64Request):
                 "raw_text": result.get("raw_response", "")
             },
             "processing_time_ms": processing_time_ms,
-            "preprocessing_applied": ["gemini_vision"],
-            "engine": "gemini-vision",
-            "model": settings.GEMINI_MODEL
+            "preprocessing_applied": ["ocr"],
+            "engine": "ocr",
+            "model": "standard"
         }
 
     except Exception as e:
