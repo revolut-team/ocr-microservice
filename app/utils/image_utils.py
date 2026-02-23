@@ -9,12 +9,52 @@ from typing import Tuple, Union
 import cv2
 
 
-def decode_base64_image(base64_string: str) -> np.ndarray:
+def _pdf_to_image(pdf_bytes: bytes, max_dim: int = 2048) -> np.ndarray:
     """
-    Decode base64 string to OpenCV image array
+    Convert the first page of a PDF to an OpenCV image array.
+    Renders directly at a safe resolution to avoid huge intermediate buffers.
 
     Args:
-        base64_string: Base64 encoded image (with or without data URI)
+        pdf_bytes: Raw PDF bytes
+        max_dim: Maximum pixel dimension for the output image
+
+    Returns:
+        OpenCV image array (BGR format)
+    """
+    import fitz  # PyMuPDF
+
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    page = doc[0]
+
+    # Calculate zoom to keep largest dimension under max_dim
+    page_rect = page.rect  # dimensions in points (1 point = 1/72 inch)
+    page_w, page_h = page_rect.width, page_rect.height
+    zoom = min(max_dim / page_w, max_dim / page_h, 200 / 72)  # cap at 200 DPI
+    mat = fitz.Matrix(zoom, zoom)
+    pix = page.get_pixmap(matrix=mat)
+
+    image_array = np.frombuffer(pix.samples, dtype=np.uint8).reshape(
+        pix.height, pix.width, pix.n
+    )
+
+    if pix.n == 4:
+        image_bgr = cv2.cvtColor(image_array, cv2.COLOR_RGBA2BGR)
+    elif pix.n == 3:
+        image_bgr = cv2.cvtColor(image_array, cv2.COLOR_RGB2BGR)
+    else:
+        image_bgr = image_array
+
+    doc.close()
+    return image_bgr
+
+
+def decode_base64_image(base64_string: str) -> np.ndarray:
+    """
+    Decode base64 string to OpenCV image array.
+    Supports images (JPEG, PNG, etc.) and PDFs (renders first page).
+
+    Args:
+        base64_string: Base64 encoded image or PDF (with or without data URI)
 
     Returns:
         OpenCV image array (BGR format)
@@ -23,12 +63,23 @@ def decode_base64_image(base64_string: str) -> np.ndarray:
         ValueError: If image cannot be decoded
     """
     try:
-        # Remove data URI prefix if present
+        # Detect MIME type from data URI before stripping
+        is_pdf = False
         if base64_string.startswith('data:'):
+            mime_part = base64_string.split(',', 1)[0]
+            if 'application/pdf' in mime_part:
+                is_pdf = True
             base64_string = base64_string.split(',', 1)[1]
 
         # Decode base64
         image_bytes = base64.b64decode(base64_string)
+
+        # Check PDF magic bytes (%PDF)
+        if not is_pdf and image_bytes[:4] == b'%PDF':
+            is_pdf = True
+
+        if is_pdf:
+            return _pdf_to_image(image_bytes)
 
         # Convert to PIL Image
         pil_image = Image.open(io.BytesIO(image_bytes))

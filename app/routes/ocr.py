@@ -107,16 +107,17 @@ async def process_cedula_vision(request: OCRBase64Request):
 @router.post("/carnet-vision")
 async def process_carnet_vision(request: OCRBase64Request):
     """
-    Process Venezuelan carnet de circulación using Gemini Vision AI
+    Process Venezuelan vehicle documents using Gemini Vision AI
 
-    Uses Google Gemini Vision to extract structured vehicle registration data.
-    More accurate than traditional OCR for Venezuelan INTT certificates.
+    Accepts both carnet de circulación and título de propiedad
+    (certificado de registro de vehículo).
 
     Extracts:
     - Plate number
     - Vehicle brand and model
     - Year and color
     - Serial number (N.I.V.)
+    - Engine serial number
     - Owner name and cedula
     - Vehicle use and type
 
@@ -163,6 +164,7 @@ async def process_carnet_vision(request: OCRBase64Request):
                 "vehicle_year": carnet_data.get("año"),
                 "vehicle_color": carnet_data.get("color"),
                 "vehicle_serial": carnet_data.get("serial"),
+                "vehicle_serial_motor": carnet_data.get("serial_motor"),
                 "owner_name": carnet_data.get("propietario"),
                 "owner_cedula": carnet_data.get("cedula_propietario"),
                 "vehicle_use": carnet_data.get("uso"),
@@ -170,6 +172,7 @@ async def process_carnet_vision(request: OCRBase64Request):
                 "vehicle_peso": carnet_data.get("peso"),
                 "vehicle_ejes": carnet_data.get("numero_ejes"),
                 "vehicle_puestos": carnet_data.get("cantidad_puestos"),
+                "tipo_documento_vehicular": carnet_data.get("tipo_documento_vehicular"),
                 "confidence": carnet_data.get("confidence"),
                 "raw_text": result.get("raw_response", "")
             },
@@ -181,6 +184,77 @@ async def process_carnet_vision(request: OCRBase64Request):
 
     except Exception as e:
         logger.error(f"Gemini Vision carnet processing failed: {str(e)}")
+        raise
+
+
+@router.post("/rif-vision")
+async def process_rif_vision(request: OCRBase64Request):
+    """
+    Process Venezuelan RIF (Registro Único de Información Fiscal) using Gemini Vision AI
+
+    Extracts:
+    - RIF number (with prefix letter)
+    - Company/person name
+    - Fiscal address
+    - Inscription, update and expiration dates
+    - Signature code and receipt number
+
+    Args:
+        request: Base64 encoded image
+
+    Returns:
+        Structured RIF data with high accuracy
+    """
+    start_time = time.time()
+
+    try:
+        logger.info("Processing RIF image with Gemini Vision")
+
+        # Decode image
+        image = decode_base64_image(request.image)
+        logger.debug(f"Image decoded: shape={image.shape}")
+
+        # Check image size
+        image_size_mb = get_image_size_mb(image)
+        if image_size_mb > settings.MAX_IMAGE_SIZE_MB:
+            raise ValueError(f"Image too large: {image_size_mb:.2f}MB (max: {settings.MAX_IMAGE_SIZE_MB}MB)")
+
+        # Get Gemini Vision service
+        gemini_service = get_gemini_vision_service()
+
+        # Process with Gemini Vision
+        result = gemini_service.process_rif_image(image)
+
+        # Calculate processing time
+        processing_time_ms = int((time.time() - start_time) * 1000)
+
+        logger.info(f"Gemini Vision RIF processing completed in {processing_time_ms}ms")
+
+        rif_data = result["data"]
+
+        return {
+            "success": True,
+            "data": {
+                "tipo_documento": rif_data.get("tipo_documento"),
+                "rif": rif_data.get("rif"),
+                "nombre": rif_data.get("nombre"),
+                "domicilio_fiscal": rif_data.get("domicilio_fiscal"),
+                "fecha_inscripcion": rif_data.get("fecha_inscripcion"),
+                "fecha_ultima_actualizacion": rif_data.get("fecha_ultima_actualizacion"),
+                "fecha_vencimiento": rif_data.get("fecha_vencimiento"),
+                "codigo_firma": rif_data.get("codigo_firma"),
+                "numero_comprobante": rif_data.get("numero_comprobante"),
+                "confidence": rif_data.get("confidence"),
+                "raw_text": result.get("raw_response", "")
+            },
+            "processing_time_ms": processing_time_ms,
+            "preprocessing_applied": ["ocr"],
+            "engine": "ocr",
+            "model": "standard"
+        }
+
+    except Exception as e:
+        logger.error(f"Gemini Vision RIF processing failed: {str(e)}")
         raise
 
 

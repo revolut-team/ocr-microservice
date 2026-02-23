@@ -19,6 +19,9 @@ pydantic-settings==2.7.0
 python-multipart==0.0.18
 requests==2.32.3
 
+# PDF support
+PyMuPDF==1.24.14
+
 # Additional utilities
 python-dateutil==2.9.0
 

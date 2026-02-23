@@ -92,16 +92,16 @@ class GeminiVisionService:
             image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             pil_image = Image.fromarray(image_rgb)
 
-            # First validate that this is a Venezuelan carnet de circulación
-            logger.info("Validating that image is a Venezuelan carnet de circulación...")
+            # First validate that this is a Venezuelan vehicle document (carnet or título)
+            logger.info("Validating that image is a Venezuelan vehicle document (carnet/título)...")
             validation_prompt = self._get_carnet_validation_prompt()
             validation_response = self.model.generate_content([validation_prompt, pil_image])
 
             logger.info(f"Carnet validation raw response: {validation_response.text}")
 
             if not self._is_valid_carnet(validation_response.text):
-                logger.warning(f"Image validation failed: Not a Venezuelan carnet. Response: {validation_response.text}")
-                raise ValueError("La imagen no corresponde a un certificado de circulación venezolano válido. Por favor, cargue una imagen de su carnet de circulación.")
+                logger.warning(f"Image validation failed: Not a Venezuelan vehicle document. Response: {validation_response.text}")
+                raise ValueError("La imagen no corresponde a un documento vehicular venezolano válido (carnet de circulación o título de propiedad). Por favor, cargue una imagen válida.")
 
             # Craft prompt for Gemini
             prompt = self._get_carnet_prompt()
@@ -183,7 +183,7 @@ Responde ÚNICAMENTE con el JSON, sin explicaciones."""
         Returns:
             Prompt string for Gemini
         """
-        return """Analiza esta imagen de un CERTIFICADO DE CIRCULACIÓN venezolano (INTT) y extrae EXACTAMENTE los siguientes datos estructurados.
+        return """Analiza esta imagen de un documento vehicular venezolano del INTT. Puede ser un CERTIFICADO DE CIRCULACIÓN (carnet) o un TÍTULO DE PROPIEDAD (certificado de registro de vehículo). Extrae EXACTAMENTE los siguientes datos estructurados.
 
 IMPORTANTE: Devuelve SOLO un JSON válido con los datos extraídos, SIN texto adicional antes o después del JSON.
 
@@ -195,13 +195,15 @@ Campos a extraer:
 4. **año**: Año del vehículo (ejemplo: "2025")
 5. **color**: Color del vehículo (ejemplo: "NEGRO", "BLANCO", "AZUL")
 6. **serial**: Serial de carrocería o N.I.V. (ejemplo: "8123NBN12SM588128")
-7. **propietario**: Nombre completo del propietario (ejemplo: "LUIGY ANTONI HERNANDEZ RIVERO")
-8. **cedula_propietario**: Cédula del propietario con letra (ejemplo: "V24757906")
-9. **uso**: Uso del vehículo (ejemplo: "MOTO PARTICULAR", "PARTICULAR", "PUBLICO")
-10. **tipo**: Tipo de vehículo (ejemplo: "MOTOCICLETA", "AUTOMOVIL", "CAMIONETA")
-11. **peso**: Peso del vehículo con unidad (ejemplo: "150 KGS", "1200 KGS"). Puede aparecer como "TARA", "PESO BRUTO" o "PESO". Si no aparece, usa null.
-12. **numero_ejes**: Número de ejes con descripción (ejemplo: "2 EJES", "3 EJES"). Si no aparece, usa null.
-13. **cantidad_puestos**: Cantidad de puestos o asientos con unidad (ejemplo: "2 PTOS.", "5 PTOS.", "2 PERSONAS"). Si no aparece, usa null.
+7. **serial_motor**: Serial del motor (ejemplo: "KW166FMM*24485025*"). Puede aparecer como "Serial Motor" o "Serial Motor:". Si no aparece, usa null.
+8. **propietario**: Nombre completo del propietario (ejemplo: "LUIGY ANTONI HERNANDEZ RIVERO")
+9. **cedula_propietario**: Cédula del propietario con letra (ejemplo: "V24757906")
+10. **uso**: Uso del vehículo (ejemplo: "MOTO PARTICULAR", "PARTICULAR", "PUBLICO")
+11. **tipo**: Tipo de vehículo (ejemplo: "MOTOCICLETA", "AUTOMOVIL", "CAMIONETA")
+12. **peso**: Peso del vehículo con unidad (ejemplo: "150 KGS", "1200 KGS"). Puede aparecer como "TARA", "PESO BRUTO" o "PESO". Si no aparece, usa null.
+13. **numero_ejes**: Número de ejes con descripción (ejemplo: "2 EJES", "3 EJES"). Si no aparece, usa null.
+14. **cantidad_puestos**: Cantidad de puestos o asientos con unidad (ejemplo: "2 PTOS.", "5 PTOS.", "2 PERSONAS"). Si no aparece, usa null.
+15. **tipo_documento_vehicular**: Tipo de documento: "CERTIFICADO_CIRCULACION" si es un carnet de circulación, "TITULO_PROPIEDAD" si es un título de propiedad/certificado de registro de vehículo.
 
 FORMATO DE RESPUESTA (JSON):
 ```json
@@ -212,13 +214,15 @@ FORMATO DE RESPUESTA (JSON):
   "año": "2025",
   "color": "NEGRO",
   "serial": "8123NBN12SM588128",
+  "serial_motor": "KW166FMM*24485025*",
   "propietario": "LUIGY ANTONI HERNANDEZ RIVERO",
   "cedula_propietario": "V24757906",
   "uso": "MOTO PARTICULAR",
   "tipo": "MOTOCICLETA",
   "peso": "150 KGS",
   "numero_ejes": "2 EJES",
-  "cantidad_puestos": "2 PTOS."
+  "cantidad_puestos": "2 PTOS.",
+  "tipo_documento_vehicular": "TITULO_PROPIEDAD"
 }
 ```
 
@@ -227,11 +231,143 @@ NOTAS IMPORTANTES:
 - TODOS los textos deben estar en MAYÚSCULAS
 - La placa puede contener números y letras (lee con cuidado, la "I" y "1" son confusas)
 - El serial N.I.V. es un número largo alfanumérico
+- El serial del motor puede contener asteriscos (*) como delimitadores, inclúyelos tal como aparecen
 - La cédula del propietario debe incluir la letra (V, E, J, G) seguida del número SIN puntos
 - NO inventes datos, si no puedes leerlo con confianza, usa `null`
 - El año puede estar en formato "2025/2025" o "2025", devuelve solo "2025"
 
 Responde ÚNICAMENTE con el JSON, sin explicaciones."""
+
+    def _get_rif_prompt(self) -> str:
+        """Get prompt for Venezuelan RIF extraction"""
+        return """Analiza esta imagen de un REGISTRO ÚNICO DE INFORMACIÓN FISCAL (RIF) venezolano del SENIAT y extrae EXACTAMENTE los siguientes datos estructurados.
+
+IMPORTANTE: Devuelve SOLO un JSON válido con los datos extraídos, SIN texto adicional antes o después del JSON.
+
+Campos a extraer:
+
+1. **rif**: El número de RIF completo incluyendo la letra inicial (ejemplo: "J507447340"). La letra puede ser V, E, J, G, P o C.
+2. **nombre**: Nombre completo o razón social de la persona o empresa (ejemplo: "DESARROLLOS REVOLUT.TEAM, C.A")
+3. **domicilio_fiscal**: Dirección completa del domicilio fiscal (ejemplo: "ESQ TANQUE A CAÑON CASA NRO 13 URB LA PASTORA CARACAS DISTRITO CAPITAL ZONA POSTAL 1030")
+4. **fecha_inscripcion**: Fecha de inscripción en formato DD/MM/YYYY
+5. **fecha_ultima_actualizacion**: Fecha de última actualización en formato DD/MM/YYYY
+6. **fecha_vencimiento**: Fecha de vencimiento en formato DD/MM/YYYY
+7. **codigo_firma**: Código de firma autorizada (ejemplo: "3507447340-SYQ")
+8. **numero_comprobante**: Número de comprobante completo (ejemplo: "202506X0000069790401")
+
+FORMATO DE RESPUESTA (JSON):
+```json
+{
+  "rif": "J507447340",
+  "nombre": "DESARROLLOS REVOLUT.TEAM, C.A",
+  "domicilio_fiscal": "ESQ TANQUE A CAÑON CASA NRO 13 URB LA PASTORA CARACAS DISTRITO CAPITAL ZONA POSTAL 1030",
+  "fecha_inscripcion": "03/09/2025",
+  "fecha_ultima_actualizacion": "03/09/2025",
+  "fecha_vencimiento": "03/09/2028",
+  "codigo_firma": "3507447340-SYQ",
+  "numero_comprobante": "202506X0000069790401"
+}
+```
+
+NOTAS:
+- Si un campo no es visible o no se puede leer, usa `null`
+- El RIF DEBE incluir la letra inicial (V, E, J, G, P, C) seguida del número SIN guiones ni puntos
+- El nombre o razón social debe estar en MAYÚSCULAS tal como aparece en el documento
+- El domicilio fiscal debe incluir toda la dirección visible
+- Las fechas deben estar en formato DD/MM/YYYY exacto
+- NO inventes datos, si no puedes leerlo con confianza, usa `null`
+
+Responde ÚNICAMENTE con el JSON, sin explicaciones."""
+
+    def _get_rif_validation_prompt(self) -> str:
+        """Get prompt to validate if image is a Venezuelan RIF"""
+        return """Tu única tarea es determinar si esta imagen es un REGISTRO ÚNICO DE INFORMACIÓN FISCAL (RIF) venezolano oficial del SENIAT.
+
+Un RIF venezolano VÁLIDO debe tener TODOS estos elementos:
+- Logo o encabezado del SENIAT (Servicio Nacional Integrado de Administración Aduanera y Tributaria)
+- Título "REGISTRO ÚNICO DE INFORMACIÓN FISCAL (RIF)"
+- Un número de RIF con prefijo V, E, J, G, P o C seguido de números
+- Campos: FECHA DE INSCRIPCIÓN, DOMICILIO FISCAL, FECHA DE VENCIMIENTO
+- Puede tener código QR y número de comprobante
+- Puede ser digital (PDF) o impreso/escaneado
+
+IMPORTANTE:
+- Si es un RIF venezolano del SENIAT → responde EXACTAMENTE: SI
+- Si NO es un RIF (cédula, carnet de circulación, pasaporte, cualquier otro documento, imagen random, etc.) → responde EXACTAMENTE: NO - [describe qué es la imagen]
+
+RESPONDE ÚNICAMENTE LA PALABRA:
+SI
+o
+NO - [descripción breve]"""
+
+    def _is_valid_rif(self, validation_response: str) -> bool:
+        """Check if validation response indicates a valid Venezuelan RIF"""
+        response_upper = validation_response.strip().upper()
+        logger.info(f"RIF validation response (uppercase): {response_upper}")
+
+        if response_upper.startswith("NO"):
+            logger.info("Validation rejected: Response starts with NO")
+            return False
+
+        if response_upper.startswith("SI") or response_upper.startswith("SÍ"):
+            logger.info("Validation accepted: Response starts with SI/SÍ")
+            return True
+
+        logger.info(f"Validation rejected: Response doesn't start with SI/SÍ. Response: {response_upper}")
+        return False
+
+    def _parse_rif_response(self, response_text: str) -> Dict[str, Any]:
+        """Parse Gemini response for RIF and extract structured data"""
+        import json
+
+        try:
+            # Extract JSON from response
+            json_match = re.search(r'```json\s*(\{.*?\})\s*```', response_text, re.DOTALL)
+            if json_match:
+                json_str = json_match.group(1)
+            else:
+                json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+                if json_match:
+                    json_str = json_match.group(0)
+                else:
+                    raise ValueError("No JSON found in response")
+
+            data = json.loads(json_str)
+
+            validated_data = {
+                "tipo_documento": "RIF",
+                "rif": data.get("rif"),
+                "nombre": data.get("nombre"),
+                "domicilio_fiscal": data.get("domicilio_fiscal"),
+                "fecha_inscripcion": data.get("fecha_inscripcion"),
+                "fecha_ultima_actualizacion": data.get("fecha_ultima_actualizacion"),
+                "fecha_vencimiento": data.get("fecha_vencimiento"),
+                "codigo_firma": data.get("codigo_firma"),
+                "numero_comprobante": data.get("numero_comprobante"),
+            }
+
+            # Calculate confidence
+            non_null_fields = sum(1 for k, v in validated_data.items() if v is not None and k != "tipo_documento")
+            total_fields = 8  # rif, nombre, domicilio, 3 fechas, codigo_firma, numero_comprobante
+            confidence = round(non_null_fields / total_fields, 3)
+
+            validated_data["confidence"] = {
+                "overall": confidence,
+                "campos_extraidos": non_null_fields,
+                "campos_totales": total_fields
+            }
+
+            logger.info(f"Parsed RIF data: {validated_data.get('rif')} - {validated_data.get('nombre')}")
+
+            return validated_data
+
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse JSON from RIF response: {str(e)}")
+            logger.error(f"Raw response: {response_text}")
+            raise ValueError("Error al procesar el documento: formato de respuesta inválido")
+        except Exception as e:
+            logger.error(f"Failed to parse RIF response: {str(e)}")
+            raise
 
     def _get_cedula_validation_prompt(self) -> str:
         """
@@ -261,22 +397,30 @@ NO - [descripción breve]"""
     def _get_carnet_validation_prompt(self) -> str:
         """
         Get prompt to validate if image is a Venezuelan carnet de circulación
+        or título de propiedad (certificado de registro de vehículo)
 
         Returns:
             Validation prompt string
         """
-        return """Tu única tarea es determinar si esta imagen es un CERTIFICADO DE CIRCULACIÓN venezolano oficial del INTT.
+        return """Tu única tarea es determinar si esta imagen es un documento vehicular venezolano oficial del INTT. Puede ser CUALQUIERA de estos dos tipos:
 
-Un certificado de circulación venezolano VÁLIDO debe tener TODOS estos elementos:
-- Encabezado "INSTITUTO NACIONAL DE TRANSPORTE TERRESTRE" o logo "INTT"
-- La palabra "CERTIFICADO" o "CIRCULACIÓN"
-- Campos del vehículo: PLACA, MARCA, MODELO, AÑO, COLOR, SERIAL (N.I.V.)
-- Información del propietario con cédula
-- Puede ser digital (con código QR) o impreso
+1. **CERTIFICADO DE CIRCULACIÓN** (carnet de circulación):
+   - Encabezado "INSTITUTO NACIONAL DE TRANSPORTE TERRESTRE" o logo "INTT"
+   - La palabra "CERTIFICADO" o "CIRCULACIÓN"
+   - Campos del vehículo: PLACA, MARCA, MODELO, AÑO, COLOR, SERIAL (N.I.V.)
+   - Información del propietario con cédula
+   - Puede ser digital (con código QR) o impreso
+
+2. **TÍTULO DE PROPIEDAD** (certificado de registro de vehículo):
+   - Encabezado "INSTITUTO NACIONAL DE TRANSPORTE TERRESTRE" o logo "INTT"
+   - Título "Certificado de Registro de Vehículo"
+   - Campos del vehículo: PLACA, MARCA, MODELO, AÑO, COLOR, SERIAL N.I.V., SERIAL MOTOR
+   - Información del propietario con cédula o RIF
+   - Puede tener código QR, número de autorización, código INTT
 
 IMPORTANTE:
-- Si es un certificado de circulación venezolano → responde EXACTAMENTE: SI
-- Si NO es un certificado de circulación (cédula, licencia de conducir, foto, cualquier otro documento, imagen random, etc.) → responde EXACTAMENTE: NO - [describe qué es la imagen]
+- Si es un certificado de circulación O un título de propiedad venezolano → responde EXACTAMENTE: SI
+- Si NO es ninguno de los dos (cédula, licencia de conducir, foto, cualquier otro documento, imagen random, etc.) → responde EXACTAMENTE: NO - [describe qué es la imagen]
 
 RESPONDE ÚNICAMENTE LA PALABRA:
 SI
@@ -338,6 +482,54 @@ NO - [descripción breve]"""
         # If response doesn't start with SI/SÍ, reject it
         logger.info(f"Validation rejected: Response doesn't start with SI/SÍ. Response: {response_upper}")
         return False
+
+    def process_rif_image(self, image: np.ndarray) -> Dict[str, Any]:
+        """
+        Process Venezuelan RIF (Registro Único de Información Fiscal) using Gemini Vision
+
+        Args:
+            image: Image as numpy array (BGR format from OpenCV)
+
+        Returns:
+            Dictionary with extracted RIF data
+        """
+        try:
+            import cv2
+            image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            pil_image = Image.fromarray(image_rgb)
+
+            # Validate that this is a Venezuelan RIF
+            logger.info("Validating that image is a Venezuelan RIF...")
+            validation_prompt = self._get_rif_validation_prompt()
+            validation_response = self.model.generate_content([validation_prompt, pil_image])
+
+            logger.info(f"RIF validation raw response: {validation_response.text}")
+
+            if not self._is_valid_rif(validation_response.text):
+                logger.warning(f"Image validation failed: Not a Venezuelan RIF. Response: {validation_response.text}")
+                raise ValueError("La imagen no corresponde a un RIF venezolano válido. Por favor, cargue una imagen de su RIF.")
+
+            # Extract data
+            prompt = self._get_rif_prompt()
+
+            logger.info("Sending RIF image to Gemini Vision API...")
+
+            response = self.model.generate_content([prompt, pil_image])
+
+            logger.info("Received RIF response from Gemini Vision API")
+            logger.debug(f"Raw response: {response.text}")
+
+            extracted_data = self._parse_rif_response(response.text)
+
+            return {
+                "success": True,
+                "data": extracted_data,
+                "raw_response": response.text
+            }
+
+        except Exception as e:
+            logger.error(f"Gemini Vision RIF processing failed: {str(e)}")
+            raise
 
     def _convert_date_format(self, date_str: Optional[str]) -> Optional[str]:
         """
@@ -486,6 +678,7 @@ NO - [descripción breve]"""
                 "año": año,
                 "color": data.get("color"),
                 "serial": data.get("serial"),
+                "serial_motor": data.get("serial_motor"),
                 "propietario": data.get("propietario"),
                 "cedula_propietario": data.get("cedula_propietario"),
                 "uso": data.get("uso"),
@@ -493,6 +686,7 @@ NO - [descripción breve]"""
                 "peso": data.get("peso"),
                 "numero_ejes": data.get("numero_ejes"),
                 "cantidad_puestos": data.get("cantidad_puestos"),
+                "tipo_documento_vehicular": data.get("tipo_documento_vehicular"),
             }
 
             # Calculate confidence (Gemini doesn't provide per-field confidence, so we estimate)
@@ -514,7 +708,7 @@ NO - [descripción breve]"""
                 "campos_core_totales": len(core_fields)
             }
 
-            logger.info(f"Parsed carnet data: {validated_data.get('placa')} - {validated_data.get('marca')} {validated_data.get('modelo')} | tipo={validated_data.get('tipo')}, peso={validated_data.get('peso')}, ejes={validated_data.get('numero_ejes')}, puestos={validated_data.get('cantidad_puestos')}")
+            logger.info(f"Parsed carnet data: {validated_data.get('placa')} - {validated_data.get('marca')} {validated_data.get('modelo')} | tipo={validated_data.get('tipo')}, serial_motor={validated_data.get('serial_motor')}, peso={validated_data.get('peso')}, ejes={validated_data.get('numero_ejes')}, puestos={validated_data.get('cantidad_puestos')}, doc={validated_data.get('tipo_documento_vehicular')}")
 
             return validated_data
 
