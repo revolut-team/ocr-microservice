@@ -1,14 +1,20 @@
 version: '3.8'
 
+# OCR Microservice - Produccion (standalone, reutilizable por cualquier proyecto)
+# Uso: docker-compose -f docker-compose.prod.yml up -d
+# Variables requeridas en .env.prod (no commitear)
+
 services:
   ocr-service:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: seguramiga-ocr
-    restart: unless-stopped
+    container_name: ocr-service
+    restart: always
     ports:
-      - "8080:8080"
+      - "127.0.0.1:${PORT:-8080}:8080"
+    env_file:
+      - .env.prod
     environment:
       - OCR_LANG=${OCR_LANG:-es}
       - OCR_USE_GPU=${OCR_USE_GPU:-false}
@@ -17,16 +23,15 @@ services:
       - MAX_IMAGE_SIZE_MB=${MAX_IMAGE_SIZE_MB:-10}
       - PREPROCESSING_PIPELINE=${PREPROCESSING_PIPELINE:-resize,exif_fix,grayscale,denoise,clahe,adaptive_threshold,sharpen}
       - PORT=${PORT:-8080}
-      - WORKERS=${WORKERS:-2}
-      - LOG_LEVEL=${LOG_LEVEL:-info}
-      - CORS_ORIGINS=${CORS_ORIGINS:-*}
+      - WORKERS=${WORKERS:-4}
+      - LOG_LEVEL=${LOG_LEVEL:-warning}
+      - CORS_ORIGINS=${CORS_ORIGINS}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-1.5-flash}
     volumes:
-      # Cache PaddleOCR models
       - paddleocr-cache:/root/.paddleocr
     networks:
-      - seguramiga-network
+      - ocr-network
     mem_limit: 2g
     mem_reservation: 1g
     healthcheck:
@@ -38,12 +43,12 @@ services:
     labels:
       - "com.seguramiga.service=ocr"
       - "com.seguramiga.version=1.0.0"
+      - "com.seguramiga.env=production"
 
 volumes:
   paddleocr-cache:
     driver: local
 
 networks:
-  seguramiga-network:
-    external: true
-    name: seguramiga-network
+  ocr-network:
+    driver: bridge
